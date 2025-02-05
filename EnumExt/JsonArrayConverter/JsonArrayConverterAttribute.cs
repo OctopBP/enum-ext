@@ -9,5 +9,5 @@ public static class JsonArrayConverterAttribute
     public static readonly string AttributeFullName = AttributeName.WithAttributePostfix();
     public static readonly string AttributeText =
         Utils.Attribute(AttributeName, typeof(JsonArrayConverterGenerator), AttributeTargets.Enum, allowMultiple: false,
-            fields: [("JsonConverterType", "type", null)]);
+            fields: [("JsonConverterType", "type", null), ("ConversionStrategy", "conversion", null)]);
 }
