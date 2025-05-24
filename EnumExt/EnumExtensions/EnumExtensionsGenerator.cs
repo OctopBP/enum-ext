@@ -106,15 +106,25 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
             
             using (new BracketsBlock(builder))
             {
+                AppendEnumName();
+                builder.AppendLine();
                 AppendValues();
+                builder.AppendLine();
+                AppendStringValues();
                 builder.AppendLine();
                 AppendValue();
                 builder.AppendLine();
                 AppendName();
                 builder.AppendLine();
+                AppendSnakeCaseName();
+                builder.AppendLine();
                 AppendFromString();
                 builder.AppendLine();
                 AppendTryFromString();
+                builder.AppendLine();
+                AppendFromSnakeCaseString();
+                builder.AppendLine();
+                AppendTryFromSnakeCaseString();
                 builder.AppendLine();
                 AppendFromValue();
                 builder.AppendLine();
@@ -133,7 +143,14 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
         }
 
         return builder.ToString();
-
+        
+        void AppendEnumName()
+        {
+            builder.AppendIdent().Append("public const string EnumName = \"").Append(enumName).Append("\";").AppendLine();
+            builder.AppendIdent().Append("public const string SnakeCaseEnumName = \"").Append(enumName.ToSnakeCase())
+                .Append("\";").AppendLine();
+        }
+        
         void AppendValues()
         {
             builder.AppendIdent().Append("public static ").Append(enumFullName).Append("[] Values => new[]").AppendLine();
@@ -142,6 +159,18 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
                 foreach (var member in enumToProcess.Members)
                 {
                     builder.AppendIdent().Append(enumFullName).Append(".").Append(member.Name).Append(",").AppendLine();
+                }
+            }
+        }
+
+        void AppendStringValues()
+        {
+            builder.AppendIdent().Append("public static string[] StringValues => new[]").AppendLine();
+            using (new BracketsBlock(builder, withSemicolon: true))
+            {
+                foreach (var member in enumToProcess.Members)
+                {
+                    builder.AppendIdent().Append("\"").Append(member.Name).Append("\",").AppendLine();
                 }
             }
         }
@@ -188,6 +217,27 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
             }
         }
         
+        void AppendSnakeCaseName()
+        {
+            builder.AppendIdent().Append("public static string SnakeCaseName(this ")
+                .Append(enumFullName).Append(" self)").AppendLine();
+            
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("switch (self)");
+                using (new BracketsBlock(builder))
+                {
+                    foreach (var member in enumToProcess.Members)
+                    {
+                        builder.AppendIdent().Append("case ").Append(enumFullName).Append(".")
+                            .Append(member.Name).Append(": return \"").Append(member.Name.ToSnakeCase()).Append("\";").AppendLine();
+                    }
+
+                    builder.AppendLineWithIdent("default: throw new System.ArgumentOutOfRangeException(nameof(self), self, null);");
+                }
+            }
+        }
+        
         void AppendFromString()
         {
             builder.AppendIdent().Append("public static ").Append(enumFullName)
@@ -225,6 +275,55 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
                     {
                         builder.AppendIdent()
                             .Append("case \"").Append(member.Name)
+                            .Append("\": return Option<").Append(enumFullName).Append(">.Some(")
+                            .Append(enumFullName).Append(".").Append(member.Name).Append(");")
+                            .AppendLine();
+                    }
+
+                    builder.AppendIdent()
+                        .Append("default: return Option<").Append(enumFullName).Append(">.None;")
+                        .AppendLine();
+                }
+            }
+        }
+        
+        void AppendFromSnakeCaseString()
+        {
+            builder.AppendIdent().Append("public static ").Append(enumFullName)
+                .Append(" FromSnakeCaseString(string value)").AppendLine();
+            
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("switch (value)");
+                using (new BracketsBlock(builder))
+                {
+                    foreach (var member in enumToProcess.Members)
+                    {
+                        builder.AppendIdent()
+                            .Append("case \"").Append(member.Name.ToSnakeCase()).Append("\": return ")
+                            .Append(enumFullName).Append(".").Append(member.Name).Append(";")
+                            .AppendLine();
+                    }
+                    
+                    builder.AppendLineWithIdent("default: throw new System.ArgumentOutOfRangeException(nameof(value), value, null);");
+                }
+            }
+        }
+        
+        void AppendTryFromSnakeCaseString()
+        {
+            builder.AppendIdent().Append("public static Option<").Append(enumFullName)
+                .Append("> TryFromSnakeCaseString(string value)").AppendLine();
+            
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("switch (value)");
+                using (new BracketsBlock(builder))
+                {
+                    foreach (var member in enumToProcess.Members)
+                    {
+                        builder.AppendIdent()
+                            .Append("case \"").Append(member.Name.ToSnakeCase())
                             .Append("\": return Option<").Append(enumFullName).Append(">.Some(")
                             .Append(enumFullName).Append(".").Append(member.Name).Append(");")
                             .AppendLine();

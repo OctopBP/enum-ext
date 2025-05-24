@@ -98,31 +98,32 @@ public sealed class ValueArrayConverterGenerator : IIncrementalGenerator
             builder.Append(Utils.GeneratedEnumByAttributeSummary(ValueArrayConverterAttribute.AttributeFullName, enumFullName));
             builder.AppendIdent().Append(methodVisibility).Append(" class ").Append(enumName)
                 .Append("ValueArrayConverter").Append(enumToProcess.ConversionStrategy)
-                .Append("() : ValueConverter<").Append(enumFullName).Append("[], string>(")
+                .Append("() : ValueConverter<").Append(enumFullName).Append("[], string[]>(")
                 .AppendLine();
 
             builder.IncreaseIdent();
-            builder.AppendIdent().Append("v => \"[\" + string.Join(\",\", v.Select(e => ")
+
+            builder.AppendIdent().Append("v => v.Select(e => ")
                 .Append(enumToProcess.ConversionStrategy switch
                 {
                     "Name" => "e.Name()",
+                    "SnakeCase" => "e.SnakeCaseName()",
                     "Value" => "e.Value()",
                     _ => "",
                 })
-                .Append(")) + \"]\",").AppendLine();
+                .Append(").ToArray(),").AppendLine();
             
-            builder.AppendIdent().Append("v => v == \"{}\" || v == \"[]\" ? Array.Empty<").Append(enumFullName)
-                .Append(">() : v.Trim('[', ']').Split(',', StringSplitOptions.RemoveEmptyEntries).Select(")
+            builder.AppendIdent().Append("v => v.Select(")
                 .Append(enumName)
                 .Append("Ext.")
                 .Append(enumToProcess.ConversionStrategy switch
                 {
                     "Name" => "FromString",
+                    "SnakeCase" => "FromSnakeCaseString",
                     "Value" => "FromStringValue",
                     _ => "",
                 })
-                .Append(").ToArray());")
-                .AppendLine();
+                .Append(").ToArray());").AppendLine();
             builder.DecreaseIdent();
         }
 

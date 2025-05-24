@@ -88,7 +88,7 @@ public sealed class JsonArrayConverterGenerator : IIncrementalGenerator
             "NewtonsoftJson" => GenerateCodeFor_NewtonsoftJson(enumToProcess),
             _ => GenerateCodeFor_SystemTextJson(enumToProcess),
         };
-        context.AddSource($"{enumToProcess.EnumSymbol.ToDisplayString()}_JsonArrayConverter.g",
+        context.AddSource($"{enumToProcess.EnumSymbol.ToDisplayString()}_JsonArrayConverter_{enumToProcess.ConversionStrategy}.g",
             SourceText.From(code, Encoding.UTF8));
     }
     
@@ -113,7 +113,8 @@ public sealed class JsonArrayConverterGenerator : IIncrementalGenerator
         {
             builder.Append(Utils.GeneratedEnumByAttributeSummary(JsonArrayConverterAttribute.AttributeFullName, enumFullName));
             builder.AppendIdent().Append(methodVisibility).Append(" class ").Append(enumName)
-                .Append("ArrayJsonConverter : JsonConverter<").Append(enumFullName).Append("[]>").AppendLine();
+                .Append("ArrayJsonConverter").Append(enumToProcess.ConversionStrategy)
+                .Append(" : JsonConverter<").Append(enumFullName).Append("[]>").AppendLine();
             
             using (new BracketsBlock(builder))
             {
@@ -154,6 +155,7 @@ public sealed class JsonArrayConverterGenerator : IIncrementalGenerator
                         .Append(enumToProcess.ConversionStrategy switch
                         {
                             "Name" => "FromString",
+                            "SnakeCase" => "FromSnakeCaseString",
                             "Value" => "FromStringValue",
                             _ => "",
                         })
@@ -177,15 +179,16 @@ public sealed class JsonArrayConverterGenerator : IIncrementalGenerator
                 builder.AppendLineWithIdent("foreach (var value in values)");
                 using (new BracketsBlock(builder))
                 {
-                    switch (enumToProcess.ConversionStrategy)
-                    {
-                        case "Name":
-                            builder.AppendLineWithIdent("writer.WriteStringValue(value.Name());");
-                            break;
-                        case "Value":
-                            builder.AppendLineWithIdent("writer.WriteStringValue(value.Value().ToString());");
-                            break;
-                    }
+                    builder.AppendIdent().Append("writer.WriteStringValue(")
+                        .Append(enumToProcess.ConversionStrategy switch
+                        {
+                            "Name" => "value.Name()",
+                            "SnakeCase" => "value.SnakeCaseName()",
+                            "Value" => "value.Value().ToString()",
+                            _ => "",
+                        })
+                        .Append(");")
+                        .AppendLine();
                 }
 
                 builder.AppendLineWithIdent("writer.WriteEndArray();");
@@ -213,7 +216,8 @@ public sealed class JsonArrayConverterGenerator : IIncrementalGenerator
         {
             builder.Append(Utils.GeneratedEnumByAttributeSummary(JsonArrayConverterAttribute.AttributeFullName, enumToProcess.FullCsharpName));
             builder.AppendIdent().Append(methodVisibility).Append(" class ").Append(enumName)
-                .AppendLine("ArrayJsonConverter : JsonConverter");
+                .Append("ArrayJsonConverter").Append(enumToProcess.ConversionStrategy)
+                .Append(" : JsonConverter").AppendLine();;
             
             using (new BracketsBlock(builder))
             {
@@ -257,17 +261,15 @@ public sealed class JsonArrayConverterGenerator : IIncrementalGenerator
                     builder.AppendLineWithIdent("if (item.Type == JTokenType.String)");
                     using (new BracketsBlock(builder))
                     {
-                        builder.AppendIdent().Append("result.Add(").Append(enumName);
-                        switch (enumToProcess.ConversionStrategy)
-                        {
-                            case "Name":
-                                builder.Append("Ext.FromString(item.GetString() ?? \"\"));");
-                                break;
-                            case "Value":
-                                builder.Append("Ext.FromStringValue(item.GetString() ?? \"\"));");
-                                break;
-                        }
-                        builder.AppendLine();
+                        builder.AppendIdent().Append("result.Add(").Append(enumName)
+                            .Append(enumToProcess.ConversionStrategy switch
+                            {
+                                "Name" => "Ext.FromString(item.ToString()));",
+                                "SnakeCase" => "Ext.FromSnakeCaseString(item.ToString()));",
+                                "Value" => "Ext.FromStringValue(item.ToString()));",
+                                _ => "",
+                            })
+                            .AppendLine();
                     }
                     builder.AppendLineWithIdent("else");
                     using (new BracketsBlock(builder))
@@ -299,7 +301,15 @@ public sealed class JsonArrayConverterGenerator : IIncrementalGenerator
                     builder.AppendLineWithIdent("foreach (var enumValue in enumArray)");
                     using (new BracketsBlock(builder))
                     {
-                        builder.AppendLineWithIdent("writer.WriteValue(enumValue.Name());");
+                        builder.AppendIdent().Append("writer.WriteValue(enumValue.")
+                            .Append(enumToProcess.ConversionStrategy switch
+                            {
+                                "Name" => "Name()",
+                                "SnakeCase" => "SnakeCaseName()",
+                                "Value" => "Value()",
+                                _ => "",
+                            })
+                            .Append(");").AppendLine();;
                     }
                     builder.AppendLineWithIdent("writer.WriteEndArray();");
                 }

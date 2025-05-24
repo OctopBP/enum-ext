@@ -1,4 +1,5 @@
 using System;
+using System.Text.RegularExpressions;
 
 namespace SourceGeneration.Utils.Common;
 
@@ -51,4 +52,17 @@ public static class StringExtensions
     }
     
     public static string WithAttributePostfix(this string value) => value + "Attribute";
+    
+    public static string ToSnakeCase(this string input)
+    {
+        if (string.IsNullOrEmpty(input))
+        {
+            return input;
+        }
+        
+        var snakeCase = Regex.Replace(input, "(?<!^)([A-Z])", "_$1").ToLower();
+        snakeCase = Regex.Replace(snakeCase, "[^a-z0-9_]", "");
+
+        return snakeCase;
+    }
 }

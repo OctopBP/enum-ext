@@ -9,5 +9,5 @@ public static class ValueArrayConverterAttribute
     public static readonly string AttributeFullName = AttributeName.WithAttributePostfix();
     public static readonly string AttributeText =
         Utils.Attribute(AttributeName, null, AttributeTargets.Enum, allowMultiple: true,
-            fields: [("ConversionStrategy", "conversion", null)]);
+            fields: [("EnumExt.ConversionStrategy", "conversion", null)]);
 }

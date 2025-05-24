@@ -47,14 +47,27 @@ public sealed class ValueConverterGenerator : IIncrementalGenerator
 
         var enumNamespace = enumDeclarationTypeSymbol.GetNamespace();
 
-        if (!enumDeclarationSyntax.HaveAttribute(ValueConverterAttribute.AttributeName))
+        if (!enumDeclarationSyntax.HaveAttributeWithArguments(ValueConverterAttribute.AttributeName, out var argumentList))
         {
             return [];
         }
         
+        if (argumentList.Arguments.Count < 1)
+        {
+            return [];
+        }
+        
+        var conversionStrategyArgument = argumentList.Arguments[0];
+        if (conversionStrategyArgument.Expression is not MemberAccessExpressionSyntax conversionStrategySyntax)
+        {
+            return [];
+        }
+        var conversionStrategy = conversionStrategySyntax.Name.Identifier.Text;
+
+        
         var list = new List<EnumToProcess>
         {
-            new EnumToProcess(enumDeclarationTypeSymbol, enumNamespace)
+            new EnumToProcess(enumDeclarationTypeSymbol, enumNamespace, conversionStrategy)
         };
 
         return list;
@@ -63,7 +76,7 @@ public sealed class ValueConverterGenerator : IIncrementalGenerator
     private static void GenerateCode(SourceProductionContext context, EnumToProcess enumToProcess)
     {
         var code = GenerateCode(enumToProcess);
-        context.AddSource($"{enumToProcess.EnumSymbol.ToDisplayString()}_ValueConverter.g",
+        context.AddSource($"{enumToProcess.EnumSymbol.ToDisplayString()}_ValueConverter{enumToProcess.ConversionStrategy}.g",
             SourceText.From(code, Encoding.UTF8));
     }
 
@@ -85,8 +98,26 @@ public sealed class ValueConverterGenerator : IIncrementalGenerator
         {
             builder.Append(Utils.GeneratedEnumByAttributeSummary(ValueConverterAttribute.AttributeFullName, enumFullName));
             builder.AppendIdent().Append(methodVisibility).Append(" class ").Append(enumName)
-                .Append("ValueConverter() : ValueConverter<").Append(enumFullName).Append(", string>(v => v.Name(), v => ")
-                .Append(enumName).Append("Ext.FromString(v));").AppendLine();
+                .Append("ValueConverter").Append(enumToProcess.ConversionStrategy)
+                .Append("() : ValueConverter<").Append(enumFullName)
+                .Append(", string>(v => ")
+                .Append(enumToProcess.ConversionStrategy switch
+                {
+                    "Name" => "v.Name()",
+                    "SnakeCase" => "v.SnakeCaseName()",
+                    "Value" => "v.Value()",
+                    _ => "",
+                })
+                .Append(", v => ")
+                .Append(enumName).Append("Ext.")
+                .Append(enumToProcess.ConversionStrategy switch
+                {
+                    "Name" => "FromString",
+                    "SnakeCase" => "FromSnakeCaseString",
+                    "Value" => "FromStringValue",
+                    _ => "",
+                })
+                .Append("(v));").AppendLine();
         }
 
         return builder.ToString();
