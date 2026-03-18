@@ -229,7 +229,12 @@ public sealed class JsonConverterGenerator : IIncrementalGenerator
 
             using (new BracketsBlock(builder))
             {
-                builder.AppendLineWithIdent("var stringValue = reader.ReadAsString();");
+                builder.AppendLineWithIdent("if (reader.TokenType == JsonToken.Null)");
+                using (new BracketsBlock(builder))
+                {
+                    builder.AppendLineWithIdent("return null;");
+                }
+                builder.AppendLineWithIdent("var stringValue = (string)reader.Value;");
                 builder.AppendLineWithIdent("if (stringValue is null)");
                 using (new BracketsBlock(builder))
                 {
