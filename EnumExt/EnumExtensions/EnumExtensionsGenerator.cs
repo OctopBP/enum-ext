@@ -206,25 +206,12 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
 
         void AppendValue()
         {
-            builder.AppendIdent().Append("public static int Value(this ")
-                .Append(enumFullName).Append(" self)").AppendLine();
-
-            using (new BracketsBlock(builder))
-            {
-                builder.AppendLineWithIdent("switch (self)");
-                using (new BracketsBlock(builder))
-                {
-                    foreach (var member in enumToProcess.Members)
-                    {
-                        builder.AppendIdent().Append("case ").Append(enumFullName).Append(".")
-                            .Append(member.Name).Append(": return ").Append(member.Value.ToString()).Append(";")
-                            .AppendLine();
-                    }
-
-                    builder.AppendLineWithIdent(
-                        "default: throw new System.ArgumentOutOfRangeException(nameof(self), self, null);");
-                }
-            }
+            builder
+                .AppendIdent()
+                .Append("public static int Value(this ")
+                .Append(enumFullName)
+                .Append(" self) => (int) self;")
+                .AppendLine();
         }
 
         void AppendName()
