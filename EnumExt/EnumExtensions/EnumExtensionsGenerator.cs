@@ -73,9 +73,12 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
         var hasLanguageExt = ctx.SemanticModel.Compilation.GlobalNamespace.GetNamespaceMembers()
             .Any(n => n.Name == "LanguageExt");
 
+        var isFlags = enumDeclarationTypeSymbol.GetAttributes()
+            .Any(attr => attr.AttributeClass?.ToDisplayString() == "System.FlagsAttribute");
+
         var list = new List<EnumToProcess>
         {
-            new(enumDeclarationTypeSymbol, membersToProcess, enumNamespace, hasLanguageExt),
+            new(enumDeclarationTypeSymbol, membersToProcess, enumNamespace, hasLanguageExt, isFlags),
         };
 
         return list;
@@ -102,6 +105,11 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
         if (enumToProcess.HasLanguageExt)
         {
             builder.AppendLineWithIdent("using LanguageExt;");
+        }
+
+        if (enumToProcess.IsFlags)
+        {
+            builder.AppendLineWithIdent("using System.Linq;");
         }
 
         using (new NamespaceBlock(builder, enumToProcess.EnumSymbol))
@@ -161,11 +169,24 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
                     builder.AppendLine();
                 }
 
-                AppendFold();
-                builder.AppendLine();
-                AppendFoldT();
-                builder.AppendLine();
-                AppendValueFold();
+                if (enumToProcess.IsFlags)
+                {
+                    AppendSetFlag();
+                    builder.AppendLine();
+                    AppendGetFlag();
+                    builder.AppendLine();
+                    AppendClearFlag();
+                    builder.AppendLine();
+                    AppendGetActiveFlags();
+                }
+                else
+                {
+                    AppendFold();
+                    builder.AppendLine();
+                    AppendFoldT();
+                    builder.AppendLine();
+                    AppendValueFold();
+                }
             }
         }
 
@@ -221,17 +242,37 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
 
             using (new BracketsBlock(builder))
             {
-                builder.AppendLineWithIdent("switch (self)");
-                using (new BracketsBlock(builder))
+                if (enumToProcess.IsFlags)
                 {
+                    builder.AppendLineWithIdent("var flags = new System.Collections.Generic.List<string>();");
                     foreach (var member in enumToProcess.Members)
                     {
-                        builder.AppendIdent().Append("case ").Append(enumFullName).Append(".")
-                            .Append(member.Name).Append(": return \"").Append(member.Name).Append("\";").AppendLine();
+                        builder.AppendIdent().Append("if (((int)self & ").Append(member.Value.ToString())
+                            .Append(") != 0)").AppendLine();
+                        using (new BracketsBlock(builder))
+                        {
+                            builder.AppendIdent().Append("flags.Add(\"").Append(member.Name).Append("\");")
+                                .AppendLine();
+                        }
                     }
 
-                    builder.AppendLineWithIdent(
-                        "default: throw new System.ArgumentOutOfRangeException(nameof(self), self, null);");
+                    builder.AppendLineWithIdent("return flags.Count > 0 ? string.Join(\", \", flags) : \"0\";");
+                }
+                else
+                {
+                    builder.AppendLineWithIdent("switch (self)");
+                    using (new BracketsBlock(builder))
+                    {
+                        foreach (var member in enumToProcess.Members)
+                        {
+                            builder.AppendIdent().Append("case ").Append(enumFullName).Append(".")
+                                .Append(member.Name).Append(": return \"").Append(member.Name).Append("\";")
+                                .AppendLine();
+                        }
+
+                        builder.AppendLineWithIdent(
+                            "default: throw new System.ArgumentOutOfRangeException(nameof(self), self, null);");
+                    }
                 }
             }
         }
@@ -243,18 +284,38 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
 
             using (new BracketsBlock(builder))
             {
-                builder.AppendLineWithIdent("switch (self)");
-                using (new BracketsBlock(builder))
+                if (enumToProcess.IsFlags)
                 {
+                    builder.AppendLineWithIdent("var flags = new System.Collections.Generic.List<string>();");
                     foreach (var member in enumToProcess.Members)
                     {
-                        builder.AppendIdent().Append("case ").Append(enumFullName).Append(".")
-                            .Append(member.Name).Append(": return \"").Append(member.Name.ToSnakeCase()).Append("\";")
-                            .AppendLine();
+                        builder.AppendIdent().Append("if (((int)self & ").Append(member.Value.ToString())
+                            .Append(") != 0)").AppendLine();
+                        using (new BracketsBlock(builder))
+                        {
+                            builder.AppendIdent().Append("flags.Add(\"").Append(member.Name.ToSnakeCase())
+                                .Append("\");").AppendLine();
+                        }
                     }
 
-                    builder.AppendLineWithIdent(
-                        "default: throw new System.ArgumentOutOfRangeException(nameof(self), self, null);");
+                    builder.AppendLineWithIdent("return flags.Count > 0 ? string.Join(\", \", flags) : \"0\";");
+                }
+                else
+                {
+                    builder.AppendLineWithIdent("switch (self)");
+                    using (new BracketsBlock(builder))
+                    {
+                        foreach (var member in enumToProcess.Members)
+                        {
+                            builder.AppendIdent().Append("case ").Append(enumFullName).Append(".")
+                                .Append(member.Name).Append(": return \"").Append(member.Name.ToSnakeCase())
+                                .Append("\";")
+                                .AppendLine();
+                        }
+
+                        builder.AppendLineWithIdent(
+                            "default: throw new System.ArgumentOutOfRangeException(nameof(self), self, null);");
+                    }
                 }
             }
         }
@@ -266,19 +327,54 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
 
             using (new BracketsBlock(builder))
             {
-                builder.AppendLineWithIdent("switch (value)");
-                using (new BracketsBlock(builder))
+                if (enumToProcess.IsFlags)
                 {
-                    foreach (var member in enumToProcess.Members)
+                    builder.AppendLineWithIdent("if (string.IsNullOrWhiteSpace(value))");
+                    using (new BracketsBlock(builder))
                     {
-                        builder.AppendIdent()
-                            .Append("case \"").Append(member.Name).Append("\": return ")
-                            .Append(enumFullName).Append(".").Append(member.Name).Append(";")
-                            .AppendLine();
+                        builder.AppendIdent().Append("return (").Append(enumFullName).Append(")0;").AppendLine();
                     }
 
-                    builder.AppendLineWithIdent(
-                        "default: throw new System.ArgumentOutOfRangeException(nameof(value), value, null);");
+                    builder.AppendLineWithIdent("var parts = value.Split(',').Select(p => p.Trim()).ToArray();");
+                    builder.AppendIdent().Append(enumFullName).Append(" result = (").Append(enumFullName).Append(")0;")
+                        .AppendLine();
+                    builder.AppendLineWithIdent("foreach (var part in parts)");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent("switch (part)");
+                        using (new BracketsBlock(builder))
+                        {
+                            foreach (var member in enumToProcess.Members)
+                            {
+                                builder.AppendIdent()
+                                    .Append("case \"").Append(member.Name).Append("\": result |= ")
+                                    .Append(enumFullName).Append(".").Append(member.Name).Append("; break;")
+                                    .AppendLine();
+                            }
+
+                            builder.AppendLineWithIdent(
+                                "default: throw new System.ArgumentOutOfRangeException(nameof(value), part, null);");
+                        }
+                    }
+
+                    builder.AppendLineWithIdent("return result;");
+                }
+                else
+                {
+                    builder.AppendLineWithIdent("switch (value)");
+                    using (new BracketsBlock(builder))
+                    {
+                        foreach (var member in enumToProcess.Members)
+                        {
+                            builder.AppendIdent()
+                                .Append("case \"").Append(member.Name).Append("\": return ")
+                                .Append(enumFullName).Append(".").Append(member.Name).Append(";")
+                                .AppendLine();
+                        }
+
+                        builder.AppendLineWithIdent(
+                            "default: throw new System.ArgumentOutOfRangeException(nameof(value), value, null);");
+                    }
                 }
             }
         }
@@ -290,21 +386,69 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
 
             using (new BracketsBlock(builder))
             {
-                builder.AppendLineWithIdent("switch (value)");
-                using (new BracketsBlock(builder))
+                if (enumToProcess.IsFlags)
                 {
-                    foreach (var member in enumToProcess.Members)
+                    builder.AppendLineWithIdent("if (string.IsNullOrWhiteSpace(value))");
+                    using (new BracketsBlock(builder))
                     {
-                        builder.AppendIdent()
-                            .Append("case \"").Append(member.Name)
-                            .Append("\": return Option<").Append(enumFullName).Append(">.Some(")
-                            .Append(enumFullName).Append(".").Append(member.Name).Append(");")
+                        builder.AppendIdent().Append("return Option<").Append(enumFullName).Append(">.Some((")
+                            .Append(enumFullName).Append(")0);").AppendLine();
+                    }
+
+                    builder.AppendLineWithIdent("try");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent("var parts = value.Split(',').Select(p => p.Trim()).ToArray();");
+                        builder.AppendIdent().Append(enumFullName).Append(" result = (").Append(enumFullName)
+                            .Append(")0;").AppendLine();
+                        builder.AppendLineWithIdent("foreach (var part in parts)");
+                        using (new BracketsBlock(builder))
+                        {
+                            builder.AppendLineWithIdent("switch (part)");
+                            using (new BracketsBlock(builder))
+                            {
+                                foreach (var member in enumToProcess.Members)
+                                {
+                                    builder.AppendIdent()
+                                        .Append("case \"").Append(member.Name).Append("\": result |= ")
+                                        .Append(enumFullName).Append(".").Append(member.Name).Append("; break;")
+                                        .AppendLine();
+                                }
+
+                                builder.AppendIdent().Append("default: return Option<").Append(enumFullName)
+                                    .Append(">.None;").AppendLine();
+                            }
+                        }
+
+                        builder.AppendIdent().Append("return Option<").Append(enumFullName).Append(">.Some(result);")
                             .AppendLine();
                     }
 
-                    builder.AppendIdent()
-                        .Append("default: return Option<").Append(enumFullName).Append(">.None;")
-                        .AppendLine();
+                    builder.AppendLineWithIdent("catch");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendIdent().Append("return Option<").Append(enumFullName).Append(">.None;")
+                            .AppendLine();
+                    }
+                }
+                else
+                {
+                    builder.AppendLineWithIdent("switch (value)");
+                    using (new BracketsBlock(builder))
+                    {
+                        foreach (var member in enumToProcess.Members)
+                        {
+                            builder.AppendIdent()
+                                .Append("case \"").Append(member.Name)
+                                .Append("\": return Option<").Append(enumFullName).Append(">.Some(")
+                                .Append(enumFullName).Append(".").Append(member.Name).Append(");")
+                                .AppendLine();
+                        }
+
+                        builder.AppendIdent()
+                            .Append("default: return Option<").Append(enumFullName).Append(">.None;")
+                            .AppendLine();
+                    }
                 }
             }
         }
@@ -366,19 +510,26 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
 
             using (new BracketsBlock(builder))
             {
-                builder.AppendLineWithIdent("switch (value)");
-                using (new BracketsBlock(builder))
+                if (enumToProcess.IsFlags)
                 {
-                    foreach (var member in enumToProcess.Members)
+                    builder.AppendIdent().Append("return (").Append(enumFullName).Append(")value;").AppendLine();
+                }
+                else
+                {
+                    builder.AppendLineWithIdent("switch (value)");
+                    using (new BracketsBlock(builder))
                     {
-                        builder.AppendIdent()
-                            .Append("case ").Append(member.Value.ToString()).Append(": return ")
-                            .Append(enumFullName).Append(".").Append(member.Name).Append(";")
-                            .AppendLine();
-                    }
+                        foreach (var member in enumToProcess.Members)
+                        {
+                            builder.AppendIdent()
+                                .Append("case ").Append(member.Value.ToString()).Append(": return ")
+                                .Append(enumFullName).Append(".").Append(member.Name).Append(";")
+                                .AppendLine();
+                        }
 
-                    builder.AppendLineWithIdent(
-                        "default: throw new System.ArgumentOutOfRangeException(nameof(value), value, null);");
+                        builder.AppendLineWithIdent(
+                            "default: throw new System.ArgumentOutOfRangeException(nameof(value), value, null);");
+                    }
                 }
             }
         }
@@ -390,21 +541,29 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
 
             using (new BracketsBlock(builder))
             {
-                builder.AppendLineWithIdent("switch (value)");
-                using (new BracketsBlock(builder))
+                if (enumToProcess.IsFlags)
                 {
-                    foreach (var member in enumToProcess.Members)
+                    builder.AppendIdent().Append("return Option<").Append(enumFullName).Append(">.Some((")
+                        .Append(enumFullName).Append(")value);").AppendLine();
+                }
+                else
+                {
+                    builder.AppendLineWithIdent("switch (value)");
+                    using (new BracketsBlock(builder))
                     {
+                        foreach (var member in enumToProcess.Members)
+                        {
+                            builder.AppendIdent()
+                                .Append("case ").Append(member.Value.ToString())
+                                .Append(": return Option<").Append(enumFullName).Append(">.Some(")
+                                .Append(enumFullName).Append(".").Append(member.Name).Append(");")
+                                .AppendLine();
+                        }
+
                         builder.AppendIdent()
-                            .Append("case ").Append(member.Value.ToString())
-                            .Append(": return Option<").Append(enumFullName).Append(">.Some(")
-                            .Append(enumFullName).Append(".").Append(member.Name).Append(");")
+                            .Append("default: return Option<").Append(enumFullName).Append(">.None;")
                             .AppendLine();
                     }
-
-                    builder.AppendIdent()
-                        .Append("default: return Option<").Append(enumFullName).Append(">.None;")
-                        .AppendLine();
                 }
             }
         }
@@ -542,6 +701,59 @@ public sealed class EnumExtensionsGenerator : IIncrementalGenerator
 
                     builder.AppendLineWithIdent(
                         "default: throw new System.ArgumentOutOfRangeException(nameof(self), self, null);");
+                }
+            }
+        }
+
+        void AppendSetFlag()
+        {
+            builder.AppendIdent().Append("public static ").Append(enumFullName).Append(" SetFlag(this ")
+                .Append(enumFullName).Append(" self, ").Append(enumFullName).Append(" flag)")
+                .AppendLine();
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("return self | flag;");
+            }
+        }
+
+        void AppendGetFlag()
+        {
+            builder.AppendIdent().Append("public static bool GetFlag(this ")
+                .Append(enumFullName).Append(" self, ").Append(enumFullName).Append(" flag)")
+                .AppendLine();
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("return (self & flag) == flag;");
+            }
+        }
+
+        void AppendClearFlag()
+        {
+            builder.AppendIdent().Append("public static ").Append(enumFullName).Append(" ClearFlag(this ")
+                .Append(enumFullName).Append(" self, ").Append(enumFullName).Append(" flag)")
+                .AppendLine();
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("return self & ~flag;");
+            }
+        }
+
+        void AppendGetActiveFlags()
+        {
+            builder.AppendIdent().Append("public static System.Collections.Generic.IEnumerable<")
+                .Append(enumFullName).Append("> GetActiveFlags(this ").Append(enumFullName).Append(" self)")
+                .AppendLine();
+            using (new BracketsBlock(builder))
+            {
+                foreach (var member in enumToProcess.Members)
+                {
+                    builder.AppendIdent().Append("if (((int)self & ").Append(member.Value.ToString())
+                        .Append(") != 0)").AppendLine();
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendIdent().Append("yield return ").Append(enumFullName).Append(".")
+                            .Append(member.Name).Append(";").AppendLine();
+                    }
                 }
             }
         }
