@@ -13,7 +13,8 @@ internal sealed record EnumToProcess(
     List<EnumMemberToProcess> Members,
     string? FullNamespace,
     string? CustomName,
-    bool UnitySerializable)
+    bool UnitySerializable,
+    bool GenerateEditor)
 {
     public string FullCsharpName { get; } = EnumSymbol.ToDisplayString();
     public string DocumentationId { get; } = DocumentationCommentId.CreateDeclarationId(EnumSymbol);
@@ -27,5 +28,7 @@ internal sealed record EnumToProcess(
     public string? FullNamespace { get; } = FullNamespace;
 
     public string ClassName { get; } = CustomName ??
-                                       $"{string.Join("_", Generics.Select(type => type.FirstCharToUpper()))}For{EnumSymbol.Name}";
+                                       $"{string.Join(separator: "_", Generics.Select(type => type.FirstCharToUpper()))}For{EnumSymbol.Name}";
+
+    public bool GenerateEditor { get; } = GenerateEditor;
 }

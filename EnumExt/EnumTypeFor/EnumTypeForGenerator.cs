@@ -26,17 +26,15 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
 
         context.RegisterPostInitializationOutput(i => i.AddSource(
             $"{EnumTypeForAttribute.AttributeFullName}.g", EnumTypeForAttribute.AttributeText));
-        
+
         context.RegisterSourceOutput(enums, GenerateCode);
     }
 
-    private static bool IsSyntaxTargetForGeneration(SyntaxNode node)
-    {
-        return node is EnumDeclarationSyntax;
-    }
-    
+    private static bool IsSyntaxTargetForGeneration(SyntaxNode node) => node is EnumDeclarationSyntax;
+
     private static List<EnumToProcess> GetSemanticTargetForGeneration(GeneratorSyntaxContext ctx,
-        CancellationToken token)
+        CancellationToken token
+    )
     {
         var enumDeclarationSyntax = (EnumDeclarationSyntax) ctx.Node;
 
@@ -47,10 +45,10 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
         }
 
         var enumNamespace = enumDeclarationTypeSymbol.GetNamespace();
-        
+
         var membersToProcess = new List<EnumMemberToProcess>();
         foreach (var enumMemberDeclarationSyntax in enumDeclarationSyntax.Members)
-        { 
+        {
             membersToProcess.Add(new EnumMemberToProcess(enumMemberDeclarationSyntax.Identifier.Text));
         }
 
@@ -68,7 +66,7 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
             {
                 continue;
             }
-            
+
             if (arguments[0].Expression is not TypeOfExpressionSyntax typeOfExpressionSyntax)
             {
                 continue;
@@ -90,42 +88,51 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
             // TODO: Rework this logic
             string customName = null;
             var unitySerializable = true;
-            if (arguments.Count > 1)
+            var generateEditor = true;
+            
+            foreach (var argument in arguments.Skip(1))
             {
-                var argument = arguments[1];
-                if (argument.NameColon is not null
-                    && argument.NameColon.Name.GetNameText() == "unitySerializable"
-                    && argument.Expression is LiteralExpressionSyntax { Token.Text: "false" })
+                if (argument.NameColon is not null)
                 {
-                    unitySerializable = false;
+                    var name = argument.NameColon.Name.GetNameText();
+                    if (name == "customName" && argument.Expression is LiteralExpressionSyntax customNameLiteral)
+                    {
+                        customName = customNameLiteral.Token.Text.Trim('"');
+                    }
+                    else if (name == "unitySerializable" && argument.Expression is LiteralExpressionSyntax unityLiteral)
+                    {
+                        unitySerializable = unityLiteral.Token.Text != "false";
+                    }
+                    else if (name == "generateEditor" && argument.Expression is LiteralExpressionSyntax editorLiteral)
+                    {
+                        generateEditor = editorLiteral.Token.Text != "false";
+                    }
                 }
                 else if (argument.Expression is LiteralExpressionSyntax literalExpressionSyntax)
                 {
-                    customName = literalExpressionSyntax.Token.Text.Trim('"');
-                }
-            }
-            
-            if (arguments.Count > 2)
-            {
-                var argument = arguments[2];
-                if (argument.NameColon is not null
-                    && argument.NameColon.Name.GetNameText() == "customName"
-                    && argument.Expression is LiteralExpressionSyntax literalExpressionSyntax)
-                {
-                    customName = literalExpressionSyntax.Token.Text;
-                }
-                else if (argument.Expression is LiteralExpressionSyntax { Token.Text: "false" })
-                {
-                    unitySerializable = false;
+                    // Positional arguments: [1] = customName, [2] = unitySerializable, [3] = generateEditor
+                    var index = arguments.IndexOf(argument);
+                    if (index == 1)
+                    {
+                        customName = literalExpressionSyntax.Token.Text.Trim('"');
+                    }
+                    else if (index == 2 && literalExpressionSyntax.Token.Text == "false")
+                    {
+                        unitySerializable = false;
+                    }
+                    else if (index == 3 && literalExpressionSyntax.Token.Text == "false")
+                    {
+                        generateEditor = false;
+                    }
                 }
             }
 
             list.Add(new EnumToProcess(enumDeclarationTypeSymbol, forTypeSymbol, generics, membersToProcess,
-                enumNamespace, customName, unitySerializable));
+                enumNamespace, customName, unitySerializable, generateEditor));
         }
 
         return list;
-        
+
         List<string> CheckAndAdd(TypeSyntax syntax)
         {
             if (syntax is not GenericNameSyntax generics)
@@ -137,7 +144,7 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
 
                 return [syntax.ToString()];
             }
-            
+
             var types = new List<string> { generics.Identifier.ToString() };
             foreach (var argumentType in generics.TypeArgumentList.Arguments)
             {
@@ -152,22 +159,29 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
     {
         var code = GenerateCode(enumToProcess);
         context.AddSource($"{enumToProcess.ClassName}.g", SourceText.From(code, Encoding.UTF8));
+
+        if (enumToProcess.UnitySerializable && enumToProcess.GenerateEditor)
+        {
+            var drawerCode = GenerateDrawerCode(enumToProcess);
+            context.AddSource($"{enumToProcess.ClassName}Drawer.g", SourceText.From(drawerCode, Encoding.UTF8));
+        }
     }
 
     private static string GenerateCode(EnumToProcess enumToProcess)
     {
         var builder = new CodeBuilder();
-        
+
         var isVisible = enumToProcess.EnumSymbol.IsVisibleOutsideOfAssembly();
         var methodVisibility = isVisible ? "public" : "internal";
         var className = enumToProcess.ClassName;
 
         var typeName = enumToProcess.ForTypeSymbol.ToDisplayString();
-        
+
         builder.Append(Utils.AutoGenerated());
-        
-        builder.Append(Utils.GeneratedEnumByAttributeSummary(EnumTypeForAttribute.AttributeFullName, enumToProcess.FullCsharpName));
-        
+
+        builder.Append(Utils.GeneratedEnumByAttributeSummary(EnumTypeForAttribute.AttributeFullName,
+            enumToProcess.FullCsharpName));
+
         if (enumToProcess.UnitySerializable)
         {
             builder.AppendLineWithIdent("[System.Serializable]");
@@ -186,9 +200,9 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
             AllValue();
             Dict();
         }
-        
+
         return builder.ToString();
-        
+
         void Fields()
         {
             foreach (var member in enumToProcess.Members)
@@ -198,10 +212,11 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                 {
                     builder.Append("[UnityEngine.SerializeField] ");
                 }
+
                 builder.Append("private ").Append(typeName).Append(" ").Append(member.Name).AppendLine(";");
             }
         }
-        
+
         void PublicAccessors()
         {
             builder.AppendLine();
@@ -212,20 +227,21 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                     .Append(" => ").Append(member.Name).AppendLine(";");
             }
         }
-        
+
         void DefaultConstructor()
         {
             builder.AppendLine();
             builder.AppendIdent().Append("public ").Append(className).Append("() { }").AppendLine();
         }
-        
+
         void Constructor()
         {
             builder.AppendLine();
             builder
                 .AppendIdent().Append("public ").Append(className)
                 .Append("(")
-                .Append(string.Join(", ", enumToProcess.Members.Select(member => $"{typeName} {member.Name.FirstCharToLower()}")))
+                .Append(string.Join(separator: ", ",
+                    enumToProcess.Members.Select(member => $"{typeName} {member.Name.FirstCharToLower()}")))
                 .Append(")")
                 .AppendLine();
 
@@ -263,7 +279,7 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                 }
             }
         }
-        
+
         void Set()
         {
             builder.AppendLine();
@@ -287,14 +303,14 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                 }
             }
         }
-        
+
         void Apply()
         {
             builder.AppendLine();
             builder
                 .AppendIdent().Append("public void Apply(").Append(enumToProcess.FullCsharpName)
                 .Append(" key, System.Func<").Append(typeName).Append(", ").Append(typeName).AppendLine("> func)");
-            
+
             using (new BracketsBlock(builder))
             {
                 builder.AppendLineWithIdent("switch (key)");
@@ -313,7 +329,7 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                 }
             }
         }
-        
+
         void AllValue()
         {
             builder.AppendLine();
@@ -326,13 +342,15 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                 }
             }
         }
-        
+
         void Dict()
         {
             builder.AppendLine();
             builder.AppendIdent()
-                .Append("public System.Collections.Generic.Dictionary<").Append(enumToProcess.FullCsharpName).Append(", ").Append(typeName)
-                .Append(">  Dict => new System.Collections.Generic.Dictionary<").Append(enumToProcess.FullCsharpName).Append(", ").Append(typeName)
+                .Append("public System.Collections.Generic.Dictionary<").Append(enumToProcess.FullCsharpName)
+                .Append(", ").Append(typeName)
+                .Append(">  Dict => new System.Collections.Generic.Dictionary<").Append(enumToProcess.FullCsharpName)
+                .Append(", ").Append(typeName)
                 .Append(">()").AppendLine();
             using (new BracketsBlock(builder, withSemicolon: true))
             {
@@ -341,6 +359,356 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                     builder.AppendIdent().Append("{ ").Append(enumToProcess.FullCsharpName).Append(".")
                         .Append(member.Name).Append(", ").Append(member.Name).Append(" },").AppendLine();
                 }
+            }
+        }
+    }
+
+    private static string GenerateDrawerCode(EnumToProcess enumToProcess)
+    {
+        var builder = new CodeBuilder();
+        var className = enumToProcess.ClassName;
+        var namespaceName = enumToProcess.FullNamespace + ".Editor";
+        var typeNameShort = enumToProcess.ForTypeSymbol.Name;
+        var enumName = enumToProcess.EnumSymbol.Name;
+
+        builder.AppendLine("#if UNITY_EDITOR");
+        builder.AppendLine("using System.Text;");
+        builder.AppendLine("using UnityEditor;");
+        builder.AppendLine("using UnityEngine;");
+        builder.AppendLine();
+        builder.AppendLine($"namespace {namespaceName}");
+        using (new BracketsBlock(builder))
+        {
+            builder.AppendLineWithIdent($"[CustomPropertyDrawer(typeof({className}))]");
+            builder.AppendIdent().Append("public class ").Append(className).AppendLine("Drawer : PropertyDrawer");
+            using (new BracketsBlock(builder))
+            {
+                GenerateConstants();
+                GenerateFields();
+                GenerateInitializeStyles();
+                GenerateGetPropertyHeight();
+                GenerateOnGUI();
+                GenerateFormatCellIdName();
+            }
+        }
+
+        builder.AppendLine("#endif");
+
+        return builder.ToString();
+
+        void GenerateConstants()
+        {
+            builder.AppendLineWithIdent("private const float RowHeight = 24f;");
+            builder.AppendLineWithIdent("private const float HeaderHeight = 20f;");
+            builder.AppendLineWithIdent("private const float LabelWidthRatio = 0.35f;");
+            builder.AppendLineWithIdent("private const float BorderWidth = 1f;");
+            builder.AppendLineWithIdent("private const float HorizontalPadding = 6f;");
+            builder.AppendLineWithIdent("private const float VerticalPadding = 4f;");
+        }
+
+        void GenerateFields()
+        {
+            builder.AppendLine();
+            builder.AppendLineWithIdent("private static readonly string[] FieldNames =");
+            using (new BracketsBlock(builder, withSemicolon: true))
+            {
+                foreach (var member in enumToProcess.Members)
+                {
+                    builder.AppendLineWithIdent($"\"{member.Name}\",");
+                }
+            }
+
+            builder.AppendLine();
+            builder.AppendLineWithIdent("private static readonly GUIStyle _headerStyle = new GUIStyle();");
+            builder.AppendLineWithIdent("private static readonly GUIStyle _columnHeaderStyle = new GUIStyle();");
+            builder.AppendLineWithIdent("private static readonly GUIStyle _cellStyle = new GUIStyle();");
+            builder.AppendLineWithIdent("private static Color _tableBorderColor;");
+            builder.AppendLineWithIdent("private static Color _borderColor;");
+            builder.AppendLineWithIdent("private static Color _stripeColor;");
+            builder.AppendLineWithIdent("private static bool _stylesInitialized;");
+        }
+
+        void GenerateInitializeStyles()
+        {
+            builder.AppendLine();
+            builder.AppendLineWithIdent("private static void InitializeStyles()");
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("if (_stylesInitialized) return;");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("_headerStyle.normal.textColor = EditorStyles.label.normal.textColor;");
+                builder.AppendLineWithIdent("_headerStyle.alignment = TextAnchor.MiddleLeft;");
+                builder.AppendLineWithIdent(
+                    "_headerStyle.padding = new RectOffset(left: 5, right: 5, top: 2, bottom: 2);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "_columnHeaderStyle.normal.textColor = EditorStyles.label.normal.textColor;");
+                builder.AppendLineWithIdent("_columnHeaderStyle.alignment = TextAnchor.MiddleCenter;");
+                builder.AppendLineWithIdent(
+                    "_columnHeaderStyle.padding = new RectOffset(left: 5, right: 5, top: 2, bottom: 2);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("_cellStyle.normal.textColor = EditorStyles.label.normal.textColor;");
+                builder.AppendLineWithIdent("_cellStyle.alignment = TextAnchor.MiddleLeft;");
+                builder.AppendLineWithIdent(
+                    "_cellStyle.padding = new RectOffset(left: 5, right: 5, top: 2, bottom: 2);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("_tableBorderColor = EditorGUIUtility.isProSkin");
+                builder.IncreaseIdent();
+                builder.AppendLineWithIdent("? new Color(r: 0.1f, g: 0.1f, b: 0.1f, a: 1f)");
+                builder.AppendLineWithIdent(": new Color(r: 0.4f, g: 0.4f, b: 0.4f, a: 1f);");
+                builder.DecreaseIdent();
+                builder.AppendLine();
+                builder.AppendLineWithIdent("_borderColor = EditorGUIUtility.isProSkin");
+                builder.IncreaseIdent();
+                builder.AppendLineWithIdent("? new Color(r: 0.15f, g: 0.15f, b: 0.15f, a: 1f)");
+                builder.AppendLineWithIdent(": new Color(r: 0.5f, g: 0.5f, b: 0.5f, a: 1f);");
+                builder.DecreaseIdent();
+                builder.AppendLine();
+                builder.AppendLineWithIdent("_stripeColor = EditorGUIUtility.isProSkin");
+                builder.IncreaseIdent();
+                builder.AppendLineWithIdent("? new Color(r: 1f, g: 1f, b: 1f, a: 0.05f)");
+                builder.AppendLineWithIdent(": new Color(r: 0f, g: 0f, b: 0f, a: 0.05f);");
+                builder.DecreaseIdent();
+                builder.AppendLine();
+                builder.AppendLineWithIdent("_stylesInitialized = true;");
+            }
+        }
+
+        void GenerateGetPropertyHeight()
+        {
+            builder.AppendLine();
+            builder.AppendLineWithIdent(
+                "public override float GetPropertyHeight(SerializedProperty property, GUIContent label)");
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("var totalHeight = BorderWidth;");
+                builder.AppendLineWithIdent("totalHeight += HeaderHeight;");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("if (property.isExpanded)");
+                using (new BracketsBlock(builder))
+                {
+                    builder.AppendLineWithIdent("totalHeight += BorderWidth;");
+                    builder.AppendLineWithIdent("totalHeight += HeaderHeight;");
+                    builder.AppendLineWithIdent("totalHeight += BorderWidth;");
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent("for(var i = 0; i < FieldNames.Length; i++)");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent("var fieldName = FieldNames[i];");
+                        builder.AppendLineWithIdent("var fieldProperty = property.FindPropertyRelative(fieldName);");
+                        builder.AppendLine();
+                        builder.AppendLineWithIdent("if (fieldProperty != null)");
+                        using (new BracketsBlock(builder))
+                        {
+                            builder.AppendLineWithIdent("var fieldHeight = EditorGUI.GetPropertyHeight(fieldProperty, GUIContent.none);");
+                            builder.AppendLineWithIdent("totalHeight += System.Math.Max(fieldHeight, RowHeight);");
+                        }
+                        builder.AppendLineWithIdent("else");
+                        using (new BracketsBlock(builder))
+                        {
+                            builder.AppendLineWithIdent("totalHeight += RowHeight;");
+                        }
+                        builder.AppendLine();
+                        builder.AppendLineWithIdent("if (i < FieldNames.Length - 1)");
+                        using (new BracketsBlock(builder))
+                        {
+                            builder.AppendLineWithIdent("totalHeight += BorderWidth;");
+                        }
+                    }
+                }
+
+                builder.AppendLine();
+                builder.AppendLineWithIdent("totalHeight += BorderWidth;");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("return totalHeight;");
+            }
+        }
+
+        void GenerateOnGUI()
+        {
+            builder.AppendLine();
+            builder.AppendLineWithIdent(
+                "public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)");
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("InitializeStyles();");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("EditorGUI.BeginProperty(position, label, property);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("var indent = EditorGUI.indentLevel;");
+                builder.AppendLineWithIdent("EditorGUI.indentLevel = 0;");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("var tableRect = position;");
+                builder.AppendLineWithIdent("var tableHeight = tableRect.height;");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "var backgroundRect = new Rect(tableRect.x, tableRect.y, tableRect.width, tableHeight);");
+                builder.AppendLineWithIdent(
+                    "EditorGUI.DrawRect(backgroundRect, new Color(r: 0.25f, g: 0.25f, b: 0.25f, a: 0.1f));");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "EditorGUI.DrawRect(new Rect(tableRect.x, tableRect.y, tableRect.width, BorderWidth), _tableBorderColor);");
+                builder.AppendLineWithIdent(
+                    "EditorGUI.DrawRect(new Rect(tableRect.x, tableRect.y + tableHeight - BorderWidth, tableRect.width, BorderWidth), _tableBorderColor);");
+                builder.AppendLineWithIdent(
+                    "EditorGUI.DrawRect(new Rect(tableRect.x, tableRect.y, BorderWidth, tableHeight), _tableBorderColor);");
+                builder.AppendLineWithIdent(
+                    "EditorGUI.DrawRect(new Rect(tableRect.x + tableRect.width - BorderWidth, tableRect.y, BorderWidth, tableHeight), _tableBorderColor);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("var contentX = tableRect.x + BorderWidth;");
+                builder.AppendLineWithIdent("var contentWidth = tableRect.width - BorderWidth * 2;");
+                builder.AppendLineWithIdent("var currentY = tableRect.y + BorderWidth;");
+                builder.AppendLineWithIdent("var labelWidth = contentWidth * LabelWidthRatio;");
+                builder.AppendLineWithIdent("var valueWidth = contentWidth - labelWidth;");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "var firstHeaderRect = new Rect(contentX, currentY, contentWidth, HeaderHeight);");
+                builder.AppendLineWithIdent("GUI.Box(firstHeaderRect, GUIContent.none, _headerStyle);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "if (Event.current.type == EventType.MouseDown && firstHeaderRect.Contains(Event.current.mousePosition))");
+                using (new BracketsBlock(builder))
+                {
+                    builder.AppendLineWithIdent("property.isExpanded = !property.isExpanded;");
+                    builder.AppendLineWithIdent("Event.current.Use();");
+                }
+
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "var foldoutRect = new Rect(firstHeaderRect.x + 16, firstHeaderRect.y, width: 15, firstHeaderRect.height);");
+                builder.AppendLineWithIdent(
+                    "EditorGUI.Foldout(foldoutRect, property.isExpanded, GUIContent.none, toggleOnLabelClick: true);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "var fieldNameRect = new Rect(firstHeaderRect.x + 16, firstHeaderRect.y, contentWidth - 24, firstHeaderRect.height);");
+                builder.AppendLineWithIdent("GUI.Label(fieldNameRect, label.text, _headerStyle);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("currentY += HeaderHeight;");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("if (!property.isExpanded)");
+                using (new BracketsBlock(builder))
+                {
+                    builder.AppendLineWithIdent("EditorGUI.indentLevel = indent;");
+                    builder.AppendLineWithIdent("EditorGUI.EndProperty();");
+                    builder.AppendLineWithIdent("return;");
+                }
+
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "var firstHeaderBorderRect = new Rect(contentX, currentY, contentWidth, BorderWidth);");
+                builder.AppendLineWithIdent("EditorGUI.DrawRect(firstHeaderBorderRect, _borderColor);");
+                builder.AppendLineWithIdent("currentY += BorderWidth;");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "var secondHeaderRect = new Rect(contentX, currentY, contentWidth, HeaderHeight);");
+                builder.AppendLineWithIdent("GUI.Box(secondHeaderRect, GUIContent.none, _headerStyle);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "var headerLabelRect = new Rect(secondHeaderRect.x, secondHeaderRect.y, labelWidth, secondHeaderRect.height);");
+                builder.AppendLineWithIdent(
+                    "var headerValueRect = new Rect(secondHeaderRect.x + labelWidth + BorderWidth, secondHeaderRect.y, valueWidth - BorderWidth, secondHeaderRect.height);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    $"GUI.Label(headerLabelRect, text: FormatCellIdName(\"{enumName}\"), _columnHeaderStyle);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "var headerVerticalBorder = new Rect(secondHeaderRect.x + labelWidth, secondHeaderRect.y, BorderWidth, secondHeaderRect.height);");
+                builder.AppendLineWithIdent("EditorGUI.DrawRect(headerVerticalBorder, _borderColor);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    $"GUI.Label(headerValueRect, text: FormatCellIdName(\"{typeNameShort}\"), _columnHeaderStyle);");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("currentY += HeaderHeight;");
+                builder.AppendLine();
+                builder.AppendLineWithIdent(
+                    "var headerBorderRect = new Rect(contentX, currentY, contentWidth, BorderWidth);");
+                builder.AppendLineWithIdent("EditorGUI.DrawRect(headerBorderRect, _borderColor);");
+                builder.AppendLineWithIdent("currentY += BorderWidth;");
+                builder.AppendLine();
+                builder.AppendLineWithIdent("for(var i = 0; i < FieldNames.Length; i++)");
+                using (new BracketsBlock(builder))
+                {
+                    builder.AppendLineWithIdent("var fieldName = FieldNames[i];");
+                    builder.AppendLineWithIdent("var fieldProperty = property.FindPropertyRelative(fieldName);");
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent("if (fieldProperty == null)");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent(
+                            $"UnityEngine.Debug.LogWarning($\"Field '{{fieldName}}' not found in {className}\");");
+                        builder.AppendLineWithIdent("continue;");
+                    }
+
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent("var fieldHeight = EditorGUI.GetPropertyHeight(fieldProperty, GUIContent.none);");
+                    builder.AppendLineWithIdent("var rowHeight = System.Math.Max(fieldHeight, RowHeight);");
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent("var rowRect = new Rect(contentX, currentY, contentWidth, rowHeight);");
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent("if (i % 2 == 1)");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent("EditorGUI.DrawRect(rowRect, _stripeColor);");
+                    }
+
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent(
+                        "var labelRect = new Rect(rowRect.x, rowRect.y, labelWidth, rowRect.height);");
+                    builder.AppendLineWithIdent(
+                        "EditorGUI.LabelField(labelRect, FormatCellIdName(fieldName), _cellStyle);");
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent(
+                        "var verticalBorderRect = new Rect(rowRect.x + labelWidth, rowRect.y, BorderWidth, rowRect.height);");
+                    builder.AppendLineWithIdent("EditorGUI.DrawRect(verticalBorderRect, _borderColor);");
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent("var valueRect = new Rect(");
+                    builder.IncreaseIdent();
+                    builder.AppendLineWithIdent("rowRect.x + labelWidth + BorderWidth + HorizontalPadding,");
+                    builder.AppendLineWithIdent("rowRect.y + VerticalPadding,");
+                    builder.AppendLineWithIdent("valueWidth - BorderWidth - HorizontalPadding * 2,");
+                    builder.AppendLineWithIdent("rowRect.height - VerticalPadding * 2);");
+                    builder.DecreaseIdent();
+                    builder.AppendLineWithIdent("EditorGUI.PropertyField(valueRect, fieldProperty, GUIContent.none);");
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent("currentY += rowHeight;");
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent("if (i < FieldNames.Length - 1)");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent(
+                            "var horizontalBorderRect = new Rect(contentX, currentY, contentWidth, BorderWidth);");
+                        builder.AppendLineWithIdent("EditorGUI.DrawRect(horizontalBorderRect, _borderColor);");
+                        builder.AppendLineWithIdent("currentY += BorderWidth;");
+                    }
+                }
+
+                builder.AppendLine();
+                builder.AppendLineWithIdent("EditorGUI.indentLevel = indent;");
+                builder.AppendLineWithIdent("EditorGUI.EndProperty();");
+            }
+        }
+
+        void GenerateFormatCellIdName()
+        {
+            builder.AppendLine();
+            builder.AppendLineWithIdent("private static string FormatCellIdName(string fieldName)");
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("var result = new StringBuilder();");
+                builder.AppendLineWithIdent("for(var i = 0; i < fieldName.Length; i++)");
+                using (new BracketsBlock(builder))
+                {
+                    builder.AppendLineWithIdent(
+                        "if (i > 0 && char.IsUpper(fieldName[i]) && !char.IsUpper(fieldName[i - 1]))");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent("result.Append(' ');");
+                    }
+
+                    builder.AppendLineWithIdent("result.Append(fieldName[i]);");
+                }
+
+                builder.AppendLineWithIdent("return result.ToString();");
             }
         }
     }

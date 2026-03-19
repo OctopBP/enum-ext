@@ -10,6 +10,6 @@ public static class EnumTypeForAttribute
     public static readonly string AttributeText =
         Utils.Attribute(AttributeName, typeof(EnumTypeForGenerator), AttributeTargets.Enum, allowMultiple: true, [
             ("System.Type", "type", null), ("string", "customName", "null"),
-            ("bool", "unitySerializable", "true"),
+            ("bool", "unitySerializable", "true"), ("bool", "generateEditor", "true"),
         ]);
 }
