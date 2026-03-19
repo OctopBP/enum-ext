@@ -1,4 +1,9 @@
 # How to use
-1. Inport `UnityAttributes.dll` to your unity project
-2. Disable all ckeckboxes in `UnityAttributes.dll` import settings panel. Press `Apply` <img width="531" alt="image" src="https://github.com/OctopBP/unity-attributes/assets/17803104/d36caba4-abbe-4adb-8edc-1c9d654c2be4">
-3. Add `RoslynAnalyzer` tag to `UnityAttributes.dll` <img width="537" alt="image" src="https://github.com/OctopBP/unity-attributes/assets/17803104/4bd16b92-b8f0-4bc8-9745-8963600ab2cf">
+1. Inport `EnumExt.dll` to your unity project
+2. Disable all ckeckboxes in `EnumExt.dll` import settings panel. Press `Apply`
+
+   <img width="572" height="348" alt="EnumExt_Step_1" src="https://github.com/user-attachments/assets/a1ab1fe6-eaf1-4434-aaeb-650901c38072" />
+
+5. Add `RoslynAnalyzer` tag to `EnumExt.dll`
+   
+   <img width="575" height="53" alt="EnumExt_Step_2" src="https://github.com/user-attachments/assets/c0f508cf-2ed9-4858-9f7d-ecb3d32fceb5" />
