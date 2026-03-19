@@ -199,8 +199,10 @@ public enum Priority
 }
 
 // Usage
-foreach (var p in PriorityExt.Values)
-    Process(p);
+foreach (var priority in PriorityExt.Values)
+{
+    Process(priority);
+}
 ```
 
 <details>

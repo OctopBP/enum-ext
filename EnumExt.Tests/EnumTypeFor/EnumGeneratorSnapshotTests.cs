@@ -46,7 +46,40 @@ public class EnumTypeForTests
                 Green,
             }
             """;
-        
+
+        return TestHelper.Verify<EnumExt.EnumTypeFor.EnumTypeForGenerator>(source, "EnumTypeFor/Tests");
+    }
+
+    [Fact]
+    public Task GenerateClass_SingleAttribute()
+    {
+        const string source =
+            """
+            public class Wrapper { public int Id; }
+
+            [EnumTypeFor(typeof(Wrapper))]
+            public enum State
+            {
+                Idle,
+                Running,
+            }
+            """;
+
+        return TestHelper.Verify<EnumExt.EnumTypeFor.EnumTypeForGenerator>(source, "EnumTypeFor/Tests");
+    }
+
+    [Fact]
+    public Task Generate_EnumWithoutAttribute_ProducesOnlyAttributeSource()
+    {
+        const string source =
+            """
+            public enum Untouched
+            {
+                A,
+                B,
+            }
+            """;
+
         return TestHelper.Verify<EnumExt.EnumTypeFor.EnumTypeForGenerator>(source, "EnumTypeFor/Tests");
     }
 }

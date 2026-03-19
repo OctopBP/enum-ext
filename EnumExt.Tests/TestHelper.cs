@@ -1,7 +1,5 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using VerifyTests;
-using VerifyXunit;
 
 namespace EnumExt.Test;
 
@@ -9,14 +7,24 @@ public static class TestHelper
 {
     public static Task Verify<T>(string source, string directory) where T : IIncrementalGenerator, new()
     {
-        var syntaxTree = CSharpSyntaxTree.ParseText(source);
-        var compilation = CSharpCompilation.Create(assemblyName: "Tests", syntaxTrees: new[] { syntaxTree });
-        
         var generator = new T();
-        GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
+        return Verify(source, directory, generator);
+    }
 
+    public static Task Verify(string source, string directory, params IIncrementalGenerator[] generators)
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText(source);
+        var compilation = CSharpCompilation.Create(assemblyName: "Tests", [syntaxTree]);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(generators);
         driver = driver.RunGenerators(compilation);
-        
-        return Verifier.Verify(driver, new VerifySettings()).UseDirectory(directory);
+
+        var settings = new VerifySettings();
+        settings.UseDirectory(directory);
+        if (Environment.GetEnvironmentVariable("VERIFY_AUTOVERIFY") == "1")
+        {
+            settings.AutoVerify();
+        }
+
+        return Verifier.Verify(driver, settings);
     }
 }
