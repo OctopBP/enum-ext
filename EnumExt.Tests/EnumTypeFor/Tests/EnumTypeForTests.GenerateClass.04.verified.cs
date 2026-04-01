@@ -1,4 +1,4 @@
-﻿//HintName: ClassWithIntForColorTestDrawer.g.cs
+﻿//HintName: CustomNameDrawer.g.cs
 #if UNITY_EDITOR
 using System.Text;
 using UnityEditor;
@@ -6,8 +6,8 @@ using UnityEngine;
 
 namespace Editor
 {
-    [CustomPropertyDrawer(typeof(ClassWithIntForColorTest))]
-    public class ClassWithIntForColorTestDrawer : PropertyDrawer
+    [CustomPropertyDrawer(typeof(CustomName))]
+    public class CustomNameDrawer : PropertyDrawer
     {
         private const float RowHeight = 24f;
         private const float HeaderHeight = 20f;
@@ -258,7 +258,7 @@ namespace Editor
             var headerVerticalBorder = new Rect(secondHeaderRect.x + labelWidth, secondHeaderRect.y, BorderWidth, secondHeaderRect.height);
             EditorGUI.DrawRect(headerVerticalBorder, _borderColor);
 
-            GUI.Label(headerValueRect, text: FormatCellIdName("ClassWithInt"), _columnHeaderStyle);
+            GUI.Label(headerValueRect, text: FormatCellIdName("ClassWithString"), _columnHeaderStyle);
 
             currentY += HeaderHeight;
 
@@ -273,7 +273,7 @@ namespace Editor
 
                 if (fieldProperty == null)
                 {
-                    UnityEngine.Debug.LogWarning($"Field '{fieldName}' not found in ClassWithIntForColorTest");
+                    UnityEngine.Debug.LogWarning($"Field '{fieldName}' not found in CustomName");
                     continue;
                 }
 

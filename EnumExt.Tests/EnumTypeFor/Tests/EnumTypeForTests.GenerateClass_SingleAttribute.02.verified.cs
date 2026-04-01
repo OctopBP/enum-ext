@@ -1,4 +1,4 @@
-﻿//HintName: ClassWithIntForColorTestDrawer.g.cs
+﻿//HintName: WrapperForStateDrawer.g.cs
 #if UNITY_EDITOR
 using System.Text;
 using UnityEditor;
@@ -6,8 +6,8 @@ using UnityEngine;
 
 namespace Editor
 {
-    [CustomPropertyDrawer(typeof(ClassWithIntForColorTest))]
-    public class ClassWithIntForColorTestDrawer : PropertyDrawer
+    [CustomPropertyDrawer(typeof(WrapperForState))]
+    public class WrapperForStateDrawer : PropertyDrawer
     {
         private const float RowHeight = 24f;
         private const float HeaderHeight = 20f;
@@ -18,9 +18,8 @@ namespace Editor
 
         private static readonly string[] FieldNames =
         {
-            "Red",
-            "Blue",
-            "Green",
+            "Idle",
+            "Running",
         };
 
         private static readonly GUIStyle _headerStyle = new GUIStyle();
@@ -253,12 +252,12 @@ namespace Editor
             var headerLabelRect = new Rect(secondHeaderRect.x, secondHeaderRect.y, labelWidth, secondHeaderRect.height);
             var headerValueRect = new Rect(secondHeaderRect.x + labelWidth + BorderWidth, secondHeaderRect.y, valueWidth - BorderWidth, secondHeaderRect.height);
 
-            GUI.Label(headerLabelRect, text: FormatCellIdName("ColorTest"), _columnHeaderStyle);
+            GUI.Label(headerLabelRect, text: FormatCellIdName("State"), _columnHeaderStyle);
 
             var headerVerticalBorder = new Rect(secondHeaderRect.x + labelWidth, secondHeaderRect.y, BorderWidth, secondHeaderRect.height);
             EditorGUI.DrawRect(headerVerticalBorder, _borderColor);
 
-            GUI.Label(headerValueRect, text: FormatCellIdName("ClassWithInt"), _columnHeaderStyle);
+            GUI.Label(headerValueRect, text: FormatCellIdName("Wrapper"), _columnHeaderStyle);
 
             currentY += HeaderHeight;
 
@@ -273,7 +272,7 @@ namespace Editor
 
                 if (fieldProperty == null)
                 {
-                    UnityEngine.Debug.LogWarning($"Field '{fieldName}' not found in ClassWithIntForColorTest");
+                    UnityEngine.Debug.LogWarning($"Field '{fieldName}' not found in WrapperForState");
                     continue;
                 }
 

@@ -367,7 +367,8 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
     {
         var builder = new CodeBuilder();
         var className = enumToProcess.ClassName;
-        var namespaceName = enumToProcess.FullNamespace + ".Editor";
+        var editorNs = enumToProcess.FullNamespace;
+        var namespaceName = string.IsNullOrEmpty(editorNs) ? "Editor" : $"{editorNs}.Editor";
         var typeNameShort = enumToProcess.ForTypeSymbol.Name;
         var enumName = enumToProcess.EnumSymbol.Name;
 
@@ -386,6 +387,7 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                 GenerateConstants();
                 GenerateFields();
                 GenerateInitializeStyles();
+                GenerateLayoutHelpers();
                 GenerateGetPropertyHeight();
                 GenerateOnGUI();
                 GenerateFormatCellIdName();
@@ -474,6 +476,139 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
             }
         }
 
+        void GenerateLayoutHelpers()
+        {
+            builder.AppendLine();
+            builder.AppendLineWithIdent("private static float EstimateDrawerContentWidth()");
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent(
+                    "return Mathf.Max(280f, EditorGUIUtility.currentViewWidth - 56f);");
+            }
+
+            builder.AppendLine();
+            builder.AppendLineWithIdent("private static float GetValueColumnContentWidth(float tableOuterWidth)");
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("var innerContentWidth = tableOuterWidth - BorderWidth * 2f;");
+                builder.AppendLineWithIdent("var labelColumnWidth = innerContentWidth * LabelWidthRatio;");
+                builder.AppendLineWithIdent("var valueColumnWidth = innerContentWidth - labelColumnWidth;");
+                builder.AppendLineWithIdent("return valueColumnWidth - BorderWidth - HorizontalPadding * 2f;");
+            }
+
+            builder.AppendLine();
+            builder.AppendLineWithIdent(
+                "private static float ChildFieldLabelWidth(float valueCellWidth, float inspectorDefaultLabelWidth)");
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent(
+                    "return Mathf.Min(inspectorDefaultLabelWidth, Mathf.Max(72f, valueCellWidth * 0.42f));");
+            }
+
+            builder.AppendLine();
+            builder.AppendLineWithIdent(
+                "private static float GetValueCellContentHeight(SerializedProperty fieldProperty, float valueCellWidth)");
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("var oldLabelWidth = EditorGUIUtility.labelWidth;");
+                builder.AppendLineWithIdent("try");
+                using (new BracketsBlock(builder))
+                {
+                    builder.AppendLineWithIdent(
+                        "EditorGUIUtility.labelWidth = ChildFieldLabelWidth(valueCellWidth, oldLabelWidth);");
+                    builder.AppendLineWithIdent("if (!fieldProperty.hasVisibleChildren)");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent(
+                            "var leafOnlyHeight = EditorGUI.GetPropertyHeight(fieldProperty, GUIContent.none);");
+                        builder.AppendLineWithIdent("return leafOnlyHeight + VerticalPadding * 2f;");
+                    }
+
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent("var iterator = fieldProperty.Copy();");
+                    builder.AppendLineWithIdent("var endProperty = iterator.GetEndProperty();");
+                    builder.AppendLineWithIdent("if (!iterator.NextVisible(enterChildren: true))");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent(
+                            "var leafHeight = EditorGUI.GetPropertyHeight(fieldProperty, GUIContent.none);");
+                        builder.AppendLineWithIdent("return leafHeight + VerticalPadding * 2f;");
+                    }
+
+                    builder.AppendLineWithIdent("var inner = 0f;");
+                    builder.AppendLineWithIdent("do");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent("var fieldLabel = new GUIContent(iterator.displayName);");
+                        builder.AppendLineWithIdent("inner += EditorGUI.GetPropertyHeight(iterator, fieldLabel);");
+                    }
+
+                    builder.AppendLineWithIdent(
+                        "while (iterator.NextVisible(enterChildren: false) && !SerializedProperty.EqualContents(iterator, endProperty));");
+                    builder.AppendLineWithIdent("return inner + VerticalPadding * 2f;");
+                }
+
+                builder.AppendLineWithIdent("finally");
+                using (new BracketsBlock(builder))
+                {
+                    builder.AppendLineWithIdent("EditorGUIUtility.labelWidth = oldLabelWidth;");
+                }
+            }
+
+            builder.AppendLine();
+            builder.AppendLineWithIdent(
+                "private static void DrawValueCellContent(Rect valueRect, SerializedProperty fieldProperty, float valueCellWidth)");
+            using (new BracketsBlock(builder))
+            {
+                builder.AppendLineWithIdent("var oldLabelWidth = EditorGUIUtility.labelWidth;");
+                builder.AppendLineWithIdent("try");
+                using (new BracketsBlock(builder))
+                {
+                    builder.AppendLineWithIdent(
+                        "EditorGUIUtility.labelWidth = ChildFieldLabelWidth(valueCellWidth, oldLabelWidth);");
+                    builder.AppendLineWithIdent("if (!fieldProperty.hasVisibleChildren)");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent(
+                            "EditorGUI.PropertyField(valueRect, fieldProperty, GUIContent.none);");
+                        builder.AppendLineWithIdent("return;");
+                    }
+
+                    builder.AppendLine();
+                    builder.AppendLineWithIdent("var iterator = fieldProperty.Copy();");
+                    builder.AppendLineWithIdent("var endProperty = iterator.GetEndProperty();");
+                    builder.AppendLineWithIdent("if (!iterator.NextVisible(enterChildren: true))");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent(
+                            "EditorGUI.PropertyField(valueRect, fieldProperty, GUIContent.none);");
+                        builder.AppendLineWithIdent("return;");
+                    }
+
+                    builder.AppendLineWithIdent("var y = valueRect.y;");
+                    builder.AppendLineWithIdent("var w = valueRect.width;");
+                    builder.AppendLineWithIdent("do");
+                    using (new BracketsBlock(builder))
+                    {
+                        builder.AppendLineWithIdent("var fieldLabel = new GUIContent(iterator.displayName);");
+                        builder.AppendLineWithIdent("var h = EditorGUI.GetPropertyHeight(iterator, fieldLabel);");
+                        builder.AppendLineWithIdent("var r = new Rect(valueRect.x, y, w, h);");
+                        builder.AppendLineWithIdent("EditorGUI.PropertyField(r, iterator, fieldLabel);");
+                        builder.AppendLineWithIdent("y += h;");
+                    }
+
+                    builder.AppendLineWithIdent(
+                        "while (iterator.NextVisible(enterChildren: false) && !SerializedProperty.EqualContents(iterator, endProperty));");
+                }
+
+                builder.AppendLineWithIdent("finally");
+                using (new BracketsBlock(builder))
+                {
+                    builder.AppendLineWithIdent("EditorGUIUtility.labelWidth = oldLabelWidth;");
+                }
+            }
+        }
+
         void GenerateGetPropertyHeight()
         {
             builder.AppendLine();
@@ -491,6 +626,9 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                     builder.AppendLineWithIdent("totalHeight += HeaderHeight;");
                     builder.AppendLineWithIdent("totalHeight += BorderWidth;");
                     builder.AppendLine();
+                    builder.AppendLineWithIdent("var estimatedTableWidth = EstimateDrawerContentWidth();");
+                    builder.AppendLineWithIdent("var valueCellWidth = GetValueColumnContentWidth(estimatedTableWidth);");
+                    builder.AppendLine();
                     builder.AppendLineWithIdent("for(var i = 0; i < FieldNames.Length; i++)");
                     using (new BracketsBlock(builder))
                     {
@@ -500,14 +638,18 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                         builder.AppendLineWithIdent("if (fieldProperty != null)");
                         using (new BracketsBlock(builder))
                         {
-                            builder.AppendLineWithIdent("var fieldHeight = EditorGUI.GetPropertyHeight(fieldProperty, GUIContent.none);");
-                            builder.AppendLineWithIdent("totalHeight += System.Math.Max(fieldHeight, RowHeight);");
+                            builder.AppendLineWithIdent(
+                                "var valueCellContentHeight = GetValueCellContentHeight(fieldProperty, valueCellWidth);");
+                            builder.AppendLineWithIdent(
+                                "totalHeight += System.Math.Max(valueCellContentHeight, RowHeight);");
                         }
+
                         builder.AppendLineWithIdent("else");
                         using (new BracketsBlock(builder))
                         {
                             builder.AppendLineWithIdent("totalHeight += RowHeight;");
                         }
+
                         builder.AppendLine();
                         builder.AppendLineWithIdent("if (i < FieldNames.Length - 1)");
                         using (new BracketsBlock(builder))
@@ -560,6 +702,8 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                 builder.AppendLineWithIdent("var currentY = tableRect.y + BorderWidth;");
                 builder.AppendLineWithIdent("var labelWidth = contentWidth * LabelWidthRatio;");
                 builder.AppendLineWithIdent("var valueWidth = contentWidth - labelWidth;");
+                builder.AppendLineWithIdent(
+                    "var valueCellWidth = valueWidth - BorderWidth - HorizontalPadding * 2;");
                 builder.AppendLine();
                 builder.AppendLineWithIdent(
                     "var firstHeaderRect = new Rect(contentX, currentY, contentWidth, HeaderHeight);");
@@ -575,7 +719,7 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
 
                 builder.AppendLine();
                 builder.AppendLineWithIdent(
-                    "var foldoutRect = new Rect(firstHeaderRect.x + 16, firstHeaderRect.y, width: 15, firstHeaderRect.height);");
+                    "var foldoutRect = new Rect(firstHeaderRect.x + 4, firstHeaderRect.y, width: 12, firstHeaderRect.height);");
                 builder.AppendLineWithIdent(
                     "EditorGUI.Foldout(foldoutRect, property.isExpanded, GUIContent.none, toggleOnLabelClick: true);");
                 builder.AppendLine();
@@ -640,8 +784,10 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                     }
 
                     builder.AppendLine();
-                    builder.AppendLineWithIdent("var fieldHeight = EditorGUI.GetPropertyHeight(fieldProperty, GUIContent.none);");
-                    builder.AppendLineWithIdent("var rowHeight = System.Math.Max(fieldHeight, RowHeight);");
+                    builder.AppendLineWithIdent(
+                        "var valueCellContentHeight = GetValueCellContentHeight(fieldProperty, valueCellWidth);");
+                    builder.AppendLineWithIdent(
+                        "var rowHeight = System.Math.Max(valueCellContentHeight, RowHeight);");
                     builder.AppendLine();
                     builder.AppendLineWithIdent("var rowRect = new Rect(contentX, currentY, contentWidth, rowHeight);");
                     builder.AppendLine();
@@ -665,10 +811,11 @@ public sealed class EnumTypeForGenerator : IIncrementalGenerator
                     builder.IncreaseIdent();
                     builder.AppendLineWithIdent("rowRect.x + labelWidth + BorderWidth + HorizontalPadding,");
                     builder.AppendLineWithIdent("rowRect.y + VerticalPadding,");
-                    builder.AppendLineWithIdent("valueWidth - BorderWidth - HorizontalPadding * 2,");
+                    builder.AppendLineWithIdent("valueCellWidth,");
                     builder.AppendLineWithIdent("rowRect.height - VerticalPadding * 2);");
                     builder.DecreaseIdent();
-                    builder.AppendLineWithIdent("EditorGUI.PropertyField(valueRect, fieldProperty, GUIContent.none);");
+                    builder.AppendLineWithIdent(
+                        "DrawValueCellContent(valueRect, fieldProperty, valueCellWidth);");
                     builder.AppendLine();
                     builder.AppendLineWithIdent("currentY += rowHeight;");
                     builder.AppendLine();
